@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>가이드 목록 | 베일드 솔루션 개발노트</title>
+<meta name="description" content="서버 운영, 외부 API, 실시간 화면, 예약 작업 등 웹 서비스 운영 실무 가이드 목록입니다.">
+<link rel="canonical" href="https://veiledsolutions.github.io/guides/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="베일드 솔루션 개발노트">
+<meta property="og:title" content="가이드 목록 | 베일드 솔루션 개발노트">
+<meta property="og:description" content="서버 운영, 외부 API, 실시간 화면, 예약 작업 등 웹 서비스 운영 실무 가이드 목록입니다.">
+<meta property="og:url" content="https://veiledsolutions.github.io/guides/">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#c9530d">
+<link rel="icon" href="/favicon.ico" sizes="16x16">
+<link rel="icon" href="/icon.png" type="image/png" sizes="512x512">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "CollectionPage", "name": "가이드 목록", "url": "https://veiledsolutions.github.io/guides/", "inLanguage": "ko-KR", "hasPart": [{"@type": "TechArticle", "headline": "외부 API 호출 한도 초과를 막는 호출 게이트 설계", "url": "https://veiledsolutions.github.io/guides/api-rate-limit-gate/"}, {"@type": "TechArticle", "headline": "실시간 화면 폴링 전송량 줄이기, 버전 기반 델타 응답", "url": "https://veiledsolutions.github.io/guides/polling-delta-response/"}, {"@type": "TechArticle", "headline": "매일 도는 예약 작업이 조용히 멈추는 이유와 가드 규칙", "url": "https://veiledsolutions.github.io/guides/scheduled-job-guard/"}]}</script>
+</head>
+<body>
+<header class="site"><div class="wrap"><a class="brand" href="/">베일드 솔루션 개발노트</a><nav><a href="/">홈</a><a href="/guides/">가이드</a></nav></div></header>
+<main class="wrap">
+<div class="crumb"><a href="/">홈</a> › 가이드</div>
+<h1>가이드 목록</h1>
+<p class="lead">운영하면서 실제로 겪은 문제를 주제별로 정리한 문서입니다.</p>
+<div class="cards"><a class="card" href="/guides/api-rate-limit-gate/"><b>외부 API 호출 한도 초과를 막는 호출 게이트 설계</b><span>유료 외부 API의 일일 한도와 초당 제한을 넘기지 않도록 모든 호출을 한 곳으로 모으는 게이트 설계와 실제 운영 규칙을 정리했습니다.</span></a><a class="card" href="/guides/polling-delta-response/"><b>실시간 화면 폴링 전송량 줄이기, 버전 기반 델타 응답</b><span>몇 초마다 전체 목록을 다시 받는 실시간 화면의 전송량을 버전 번호와 변경분 응답으로 수백 분의 일로 줄이는 방법을 정리했습니다.</span></a><a class="card" href="/guides/scheduled-job-guard/"><b>매일 도는 예약 작업이 조용히 멈추는 이유와 가드 규칙</b><span>에러 없이 조용히 안 돌던 일일 예약 작업들의 원인과, 날짜 경계, 실행 기록, 이중 실행을 막는 가드 규칙을 운영 경험으로 정리했습니다.</span></a></div>
+</main>
+<footer><div class="wrap">© 2026 베일드 솔루션. 거래 플랫폼과 웹 서비스를 직접 만들고 운영하며 정리한 기록입니다.</div></footer>
+</body>
+</html>

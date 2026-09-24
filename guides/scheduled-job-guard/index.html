@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>매일 도는 예약 작업이 조용히 멈추는 이유와 가드 규칙 | 베일드 솔루션 개발노트</title>
+<meta name="description" content="에러 없이 조용히 안 돌던 일일 예약 작업들의 원인과, 날짜 경계, 실행 기록, 이중 실행을 막는 가드 규칙을 운영 경험으로 정리했습니다.">
+<link rel="canonical" href="https://veiledsolutions.github.io/guides/scheduled-job-guard/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="베일드 솔루션 개발노트">
+<meta property="og:title" content="매일 도는 예약 작업이 조용히 멈추는 이유와 가드 규칙 | 베일드 솔루션 개발노트">
+<meta property="og:description" content="에러 없이 조용히 안 돌던 일일 예약 작업들의 원인과, 날짜 경계, 실행 기록, 이중 실행을 막는 가드 규칙을 운영 경험으로 정리했습니다.">
+<meta property="og:url" content="https://veiledsolutions.github.io/guides/scheduled-job-guard/">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#c9530d">
+<link rel="icon" href="/favicon.ico" sizes="16x16">
+<link rel="icon" href="/icon.png" type="image/png" sizes="512x512">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "TechArticle", "headline": "매일 도는 예약 작업이 조용히 멈추는 이유와 가드 규칙", "description": "에러 없이 조용히 안 돌던 일일 예약 작업들의 원인과, 날짜 경계, 실행 기록, 이중 실행을 막는 가드 규칙을 운영 경험으로 정리했습니다.", "datePublished": "2026-09-24", "dateModified": "2026-09-24", "inLanguage": "ko-KR", "mainEntityOfPage": "https://veiledsolutions.github.io/guides/scheduled-job-guard/", "author": {"@type": "Organization", "name": "베일드 솔루션", "logo": "https://veiledsolutions.github.io/icon.png"}, "publisher": {"@type": "Organization", "name": "베일드 솔루션", "logo": "https://veiledsolutions.github.io/icon.png"}, "keywords": "예약 작업, 크론 작업, 스케줄러 장애, 배치 작업 모니터링, 일일 작업"}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "홈", "item": "https://veiledsolutions.github.io/"}, {"@type": "ListItem", "position": 2, "name": "가이드", "item": "https://veiledsolutions.github.io/guides/"}, {"@type": "ListItem", "position": 3, "name": "매일 도는 예약 작업이 조용히 멈추는 이유와 가드 규칙", "item": "https://veiledsolutions.github.io/guides/scheduled-job-guard/"}]}]}</script>
+</head>
+<body>
+<header class="site"><div class="wrap"><a class="brand" href="/">베일드 솔루션 개발노트</a><nav><a href="/">홈</a><a href="/guides/">가이드</a></nav></div></header>
+<main class="wrap">
+<div class="crumb"><a href="/">홈</a> › <a href="/guides/">가이드</a></div>
+<article>
+<h1>매일 도는 예약 작업이 조용히 멈추는 이유와 가드 규칙</h1>
+<div class="meta"><time datetime="2026-09-24">2026.09.24</time> · 베일드 솔루션</div>
+<p class="lead">매일 한 번 도는 정산, 통계 집계, 데이터 정리 같은 예약 작업은 멈춰도 티가 나지 않습니다. 에러가 나면 차라리 다행인데, 대부분은 아무 로그 없이 그냥 안 돕니다. 저희도 여러 서비스를 점검하다가 일일 작업 네 개가 며칠째 돌지 않고 있던 걸 한 번에 발견한 적이 있습니다. 원인과 그 뒤에 만든 규칙을 정리합니다.</p>
+
+<h2>조용히 멈추는 흔한 원인 네 가지</h2>
+<h3>1. 날짜 기준이 서버 시간대와 다르다</h3>
+<p>"오늘 이미 실행했는가"를 날짜로 판단하는 코드가 많습니다. 서버가 UTC로 돌고 서비스는 한국 시간 기준이면, 한국 시간 오전 9시 전까지 서버의 "오늘"은 어제입니다. 새벽에 돌아야 할 작업이 "이미 오늘 했다"고 판단하고 넘어가거나, 반대로 하루에 두 번 돕니다. 날짜 판단은 반드시 서비스 기준 시간대로 변환한 뒤에 해야 합니다.</p>
+
+<h3>2. 실행 주체가 두 개다</h3>
+<p>시스템 타이머에도 걸려 있고 앱 내부 인터벌에도 걸려 있는 작업이 생각보다 많습니다. 둘이 같은 "마지막 실행" 표시를 공유하면, 한쪽이 먼저 표시를 찍고 다른 쪽은 건너뜁니다. 그런데 먼저 찍은 쪽이 사실 중간에 실패했다면 그날은 아무도 끝까지 돌리지 않은 셈입니다.</p>
+
+<h3>3. 재시작 때마다 주기가 초기화된다</h3>
+<p>앱 안에서 "24시간마다 실행" 인터벌을 걸면, 배포나 재시작이 하루에 한 번만 있어도 그 작업은 영원히 실행되지 않습니다. 타이머가 24시간을 채우기 전에 매번 새로 시작하기 때문입니다.</p>
+
+<h3>4. 성공 표시를 시작할 때 찍는다</h3>
+<p>작업을 시작하자마자 "오늘 실행함"을 기록하면, 중간에 죽어도 기록은 성공으로 남습니다. 다음 날까지 아무도 모릅니다.</p>
+
+<h2>가드 규칙</h2>
+<ol>
+<li><b>작업마다 전용 실행 기록</b>: 작업 이름별로 "마지막 성공 시각"을 저장하는 표를 하나 두고, 다른 작업과 표시를 공유하지 않습니다.</li>
+<li><b>성공 기록은 끝났을 때만</b>: 모든 단계가 끝난 뒤에 기록합니다. 시작 시각은 별도 칸에 적어서 "시작했는데 안 끝난" 상태를 알아볼 수 있게 합니다.</li>
+<li><b>긴 주기 대신 짧게 깨서 확인</b>: 24시간 인터벌 대신 몇 시간마다 깨어나서 "마지막 성공이 오늘 기준일보다 이전인가"만 확인하고, 그렇다면 실행합니다. 재시작이 잦아도 하루 안에 반드시 한 번은 돕니다.</li>
+<li><b>실행 주체는 하나</b>: 시스템 타이머든 앱 내부든 한 곳만 남기고, 다른 쪽은 지웁니다. 여러 서버에서 돌 수 있다면 데이터베이스 잠금으로 동시에 하나만 실행되게 합니다.</li>
+<li><b>기준일은 서비스 시간대로</b>: 날짜 계산 함수를 하나로 모으고, 모든 작업이 그 함수를 씁니다.</li>
+</ol>
+<pre><code>// 6시간마다 깨어나 확인만 한다
+async function tick(job: Job) {
+  const today = serviceDayKey(new Date());      // 서비스 시간대 기준 날짜
+  const last = await jobs.lastSuccessDay(job.name);
+  if (last === today) return;                   // 오늘 이미 성공
+  if (!(await jobs.tryLock(job.name))) return;  // 다른 곳에서 실행 중
+  try {
+    await jobs.markStarted(job.name);
+    await job.run();
+    await jobs.markSuccess(job.name, today);    // 끝났을 때만 성공 기록
+  } finally {
+    await jobs.unlock(job.name);
+  }
+}</code></pre>
+
+<h2>멈춘 걸 알아채는 장치</h2>
+<p>규칙을 지켜도 작업은 언젠가 멈춥니다. 그래서 감시를 따로 둡니다. 각 작업의 마지막 성공 시각을 한 화면에 모아 보여주고, 정해진 시간(일일 작업이면 30시간)이 넘도록 성공 기록이 없으면 운영자에게 메시지를 보냅니다. 이 감시 자체도 예약 작업이니, 감시가 도는지 확인하는 방법은 외부 모니터링 서비스의 하트비트 기능을 쓰는 게 가장 간단합니다.</p>
+<div class="note">실패 알림이 없는 예약 작업은 이미 멈춰 있을 수 있다고 가정하는 편이 안전합니다. 한 달에 한 번은 모든 작업의 마지막 성공 시각을 직접 확인해 보세요.</div>
+
+<h2>정리</h2>
+<p>예약 작업 장애는 코드 버그보다 시간대, 재시작, 이중 실행 같은 운영 환경에서 생깁니다. 전용 실행 기록, 끝났을 때만 성공 표시, 짧게 깨서 확인, 실행 주체 하나, 그리고 멈춤 감시. 이 다섯 가지면 "며칠째 안 돌고 있었다"는 사고는 거의 막을 수 있습니다.</p>
+</article>
+</main>
+<footer><div class="wrap">© 2026 베일드 솔루션. 거래 플랫폼과 웹 서비스를 직접 만들고 운영하며 정리한 기록입니다.</div></footer>
+</body>
+</html>

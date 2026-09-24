@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>외부 API 호출 한도 초과를 막는 호출 게이트 설계 | 베일드 솔루션 개발노트</title>
+<meta name="description" content="유료 외부 API의 일일 한도와 초당 제한을 넘기지 않도록 모든 호출을 한 곳으로 모으는 게이트 설계와 실제 운영 규칙을 정리했습니다.">
+<link rel="canonical" href="https://veiledsolutions.github.io/guides/api-rate-limit-gate/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="베일드 솔루션 개발노트">
+<meta property="og:title" content="외부 API 호출 한도 초과를 막는 호출 게이트 설계 | 베일드 솔루션 개발노트">
+<meta property="og:description" content="유료 외부 API의 일일 한도와 초당 제한을 넘기지 않도록 모든 호출을 한 곳으로 모으는 게이트 설계와 실제 운영 규칙을 정리했습니다.">
+<meta property="og:url" content="https://veiledsolutions.github.io/guides/api-rate-limit-gate/">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#c9530d">
+<link rel="icon" href="/favicon.ico" sizes="16x16">
+<link rel="icon" href="/icon.png" type="image/png" sizes="512x512">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "TechArticle", "headline": "외부 API 호출 한도 초과를 막는 호출 게이트 설계", "description": "유료 외부 API의 일일 한도와 초당 제한을 넘기지 않도록 모든 호출을 한 곳으로 모으는 게이트 설계와 실제 운영 규칙을 정리했습니다.", "datePublished": "2026-09-24", "dateModified": "2026-09-24", "inLanguage": "ko-KR", "mainEntityOfPage": "https://veiledsolutions.github.io/guides/api-rate-limit-gate/", "author": {"@type": "Organization", "name": "베일드 솔루션", "logo": "https://veiledsolutions.github.io/icon.png"}, "publisher": {"@type": "Organization", "name": "베일드 솔루션", "logo": "https://veiledsolutions.github.io/icon.png"}, "keywords": "API 레이트리밋, 호출 한도, API 쿼터 관리, 외부 API 연동, 백오프"}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "홈", "item": "https://veiledsolutions.github.io/"}, {"@type": "ListItem", "position": 2, "name": "가이드", "item": "https://veiledsolutions.github.io/guides/"}, {"@type": "ListItem", "position": 3, "name": "외부 API 호출 한도 초과를 막는 호출 게이트 설계", "item": "https://veiledsolutions.github.io/guides/api-rate-limit-gate/"}]}]}</script>
+</head>
+<body>
+<header class="site"><div class="wrap"><a class="brand" href="/">베일드 솔루션 개발노트</a><nav><a href="/">홈</a><a href="/guides/">가이드</a></nav></div></header>
+<main class="wrap">
+<div class="crumb"><a href="/">홈</a> › <a href="/guides/">가이드</a></div>
+<article>
+<h1>외부 API 호출 한도 초과를 막는 호출 게이트 설계</h1>
+<div class="meta"><time datetime="2026-09-24">2026.09.24</time> · 베일드 솔루션</div>
+<p class="lead">외부 데이터 API를 쓰는 서비스는 언젠가 한도 초과를 겪습니다. 문제는 한도를 넘는 순간 서비스 화면이 통째로 비어 버린다는 점입니다. 이 문서는 저희가 실제로 한도를 소진하는 사고를 겪은 뒤 만든 호출 게이트 구조와 규칙입니다.</p>
+
+<h2>한도 초과는 어디서 생기나</h2>
+<p>처음에는 대부분 "호출 수를 계산해 봤는데 넉넉하다"고 생각합니다. 그런데 실제로 한도를 넘기는 원인은 계산에 넣지 않은 곳에서 나옵니다.</p>
+<ul>
+<li><b>여러 작업이 각자 호출</b>: 주기 동기화, 관리자 화면, 사용자 페이지가 각자 API를 부르면 합계를 아무도 모릅니다.</li>
+<li><b>페이지 요청이 API를 직접 호출</b>: 사용자가 페이지를 열 때마다 외부 API를 부르면 방문자 수가 곧 호출 수가 됩니다. 검색엔진 크롤러가 수만 페이지를 긁는 날 하루 한도가 오전에 바닥납니다.</li>
+<li><b>재시도 폭주</b>: 실패하면 바로 다시 부르는 코드가 여러 곳에 있으면, 한 번의 장애가 수십 배의 호출로 불어납니다.</li>
+<li><b>초당 제한</b>: 일일 한도는 남았는데 동시에 여러 요청을 보내서 거절되는 경우입니다. 어떤 API는 한 번 거절이 나면 그 분이 끝날 때까지 모든 요청을 거절합니다.</li>
+</ul>
+
+<h2>원칙: 모든 호출은 게이트 하나를 지난다</h2>
+<p>해결의 핵심은 코드 어디에서도 외부 API를 직접 부르지 않게 하는 것입니다. 호출 함수 하나를 만들고, 모든 모듈이 그 함수만 쓰게 합니다. 그래야 간격, 예산, 재시도 규칙을 한 곳에서 지킬 수 있습니다.</p>
+<pre><code>// 모든 외부 호출은 이 함수로만
+export async function gatedFetch(url: string, opts: GateOpts) {
+  await waitForSlot();               // 1. 간격 유지
+  if (!budget.allow(opts.priority))  // 2. 일일 예산 확인
+    throw new QuotaReserved(url);
+  const res = await fetch(url);
+  budget.record();
+  if (res.status === 429) {          // 3. 거절이면 분 경계까지 정지
+    pauseUntilNextMinute();
+    throw new RateLimited(url);
+  }
+  return res;
+}</code></pre>
+<p>새로 합류한 개발자가 실수로 <code>fetch</code>를 직접 쓰는 일을 막으려면, 배포 전에 API 주소 문자열을 검색해서 게이트 파일 밖에서 나오면 실패하게 하는 검사 하나를 넣어 두면 됩니다.</p>
+
+<h2>규칙 1. 동시에 보내지 말고 간격을 둔다</h2>
+<p>요청을 한꺼번에 묶어서 보내면 빠를 것 같지만, 초당 제한이 있는 API에서는 오히려 전부 거절될 수 있습니다. 게이트 안에서 요청 사이에 최소 간격(예: 200ms)을 두고 한 줄로 내보냅니다. 수천 건을 동기화하는 배치 작업도 이 줄을 지나가게 하면, 느려 보여도 거절 없이 끝나는 쪽이 전체 시간은 짧습니다.</p>
+
+<h2>규칙 2. 예비 한도를 남긴다</h2>
+<p>일일 한도를 전부 배치 작업이 쓸 수 있게 두면, 오후에 사용자 화면이 호출할 몫이 없습니다. 그래서 예산을 두 층으로 나눕니다.</p>
+<ul>
+<li>배치 작업(동기화, 백필)은 남은 한도가 예비선(예: 15%) 아래로 내려가면 멈춥니다.</li>
+<li>사용자 화면을 위한 호출만 예비분을 쓸 수 있습니다.</li>
+<li>남은 한도는 API 응답 헤더에 오는 값을 믿고, 우리 쪽 카운터는 보조로만 씁니다.</li>
+</ul>
+
+<h2>규칙 3. 페이지는 API가 아니라 저장된 데이터를 읽는다</h2>
+<p>사용자 요청 경로에서 외부 API를 부르지 않는 것이 가장 효과가 큽니다. 외부 데이터는 주기 작업이 받아서 데이터베이스에 넣고, 페이지는 데이터베이스만 읽습니다. 데이터가 오래됐으면 일단 저장된 값을 보여주고 백그라운드에서 갱신을 한 번만 요청합니다. 같은 항목에 대한 갱신 요청이 동시에 여러 번 들어와도 하나로 합쳐야 합니다.</p>
+<div class="note">크롤러 트래픽은 사람보다 훨씬 많을 수 있습니다. 페이지가 외부 API를 직접 부르는 구조라면 검색엔진 하나가 하루 한도를 전부 가져갈 수 있습니다.</div>
+
+<h2>규칙 4. 재시도는 게이트만 한다</h2>
+<p>재시도 로직이 여러 모듈에 흩어져 있으면 장애 때 호출이 폭발합니다. 재시도는 게이트 안에서만, 지수 백오프(1초, 2초, 4초)와 최대 횟수를 정해 두고 합니다. 호출하는 쪽은 실패를 받으면 이전 데이터로 화면을 그리고 끝냅니다.</p>
+
+<h2>점검 체크리스트</h2>
+<ol>
+<li>코드에서 외부 API 주소를 검색했을 때 게이트 파일에서만 나오는가</li>
+<li>사용자 페이지 요청 한 번이 외부 호출을 몇 번 만드는가 (0이 목표)</li>
+<li>배치 작업이 예비 한도를 침범하지 못하는가</li>
+<li>초당 제한 거절 뒤 분 경계까지 쉬는가</li>
+<li>남은 한도가 일정 비율 아래로 내려가면 운영자에게 알림이 가는가</li>
+</ol>
+<p>이 다섯 가지를 지키고 나서는 방문자나 크롤러가 몰리는 날에도 한도 때문에 화면이 비는 일이 없어졌습니다.</p>
+</article>
+</main>
+<footer><div class="wrap">© 2026 베일드 솔루션. 거래 플랫폼과 웹 서비스를 직접 만들고 운영하며 정리한 기록입니다.</div></footer>
+</body>
+</html>

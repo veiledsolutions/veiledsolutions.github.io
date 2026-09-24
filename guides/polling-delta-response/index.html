@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>실시간 화면 폴링 전송량 줄이기, 버전 기반 델타 응답 | 베일드 솔루션 개발노트</title>
+<meta name="description" content="몇 초마다 전체 목록을 다시 받는 실시간 화면의 전송량을 버전 번호와 변경분 응답으로 수백 분의 일로 줄이는 방법을 정리했습니다.">
+<link rel="canonical" href="https://veiledsolutions.github.io/guides/polling-delta-response/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="베일드 솔루션 개발노트">
+<meta property="og:title" content="실시간 화면 폴링 전송량 줄이기, 버전 기반 델타 응답 | 베일드 솔루션 개발노트">
+<meta property="og:description" content="몇 초마다 전체 목록을 다시 받는 실시간 화면의 전송량을 버전 번호와 변경분 응답으로 수백 분의 일로 줄이는 방법을 정리했습니다.">
+<meta property="og:url" content="https://veiledsolutions.github.io/guides/polling-delta-response/">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#c9530d">
+<link rel="icon" href="/favicon.ico" sizes="16x16">
+<link rel="icon" href="/icon.png" type="image/png" sizes="512x512">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "TechArticle", "headline": "실시간 화면 폴링 전송량 줄이기, 버전 기반 델타 응답", "description": "몇 초마다 전체 목록을 다시 받는 실시간 화면의 전송량을 버전 번호와 변경분 응답으로 수백 분의 일로 줄이는 방법을 정리했습니다.", "datePublished": "2026-09-24", "dateModified": "2026-09-24", "inLanguage": "ko-KR", "mainEntityOfPage": "https://veiledsolutions.github.io/guides/polling-delta-response/", "author": {"@type": "Organization", "name": "베일드 솔루션", "logo": "https://veiledsolutions.github.io/icon.png"}, "publisher": {"@type": "Organization", "name": "베일드 솔루션", "logo": "https://veiledsolutions.github.io/icon.png"}, "keywords": "폴링 최적화, 델타 업데이트, 실시간 시세 화면, 전송량 절감, 웹소켓 대안"}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "홈", "item": "https://veiledsolutions.github.io/"}, {"@type": "ListItem", "position": 2, "name": "가이드", "item": "https://veiledsolutions.github.io/guides/"}, {"@type": "ListItem", "position": 3, "name": "실시간 화면 폴링 전송량 줄이기, 버전 기반 델타 응답", "item": "https://veiledsolutions.github.io/guides/polling-delta-response/"}]}]}</script>
+</head>
+<body>
+<header class="site"><div class="wrap"><a class="brand" href="/">베일드 솔루션 개발노트</a><nav><a href="/">홈</a><a href="/guides/">가이드</a></nav></div></header>
+<main class="wrap">
+<div class="crumb"><a href="/">홈</a> › <a href="/guides/">가이드</a></div>
+<article>
+<h1>실시간 화면 폴링 전송량 줄이기, 버전 기반 델타 응답</h1>
+<div class="meta"><time datetime="2026-09-24">2026.09.24</time> · 베일드 솔루션</div>
+<p class="lead">시세판이나 실시간 점수판처럼 몇 초마다 새로고침하는 화면은 만들기는 쉽지만 사용자가 늘면 서버와 사용자 데이터를 빠르게 잡아먹습니다. 저희는 15초마다 전체 목록을 내려보내던 화면을 버전 기반 델타 응답으로 바꿔서 한 번의 응답을 약 217KB에서 650바이트 수준으로 줄였습니다.</p>
+
+<h2>문제: 바뀐 건 두 줄인데 매번 전부 보낸다</h2>
+<p>가장 흔한 구현은 화면이 일정 간격으로 목록 API를 다시 부르고, 서버는 매번 전체 목록을 보내는 방식입니다. 목록 수백 개 중 실제로 바뀐 건 몇 개뿐인데도 전부 다시 보냅니다. 사용자 100명이 화면을 열어 두면 15초마다 20MB가 넘게 나가고, 모바일 사용자는 데이터 요금과 배터리를 같이 씁니다.</p>
+
+<h2>해결: 서버가 버전을 세고, 클라이언트는 받은 버전을 기억한다</h2>
+<p>아이디어는 단순합니다. 서버는 데이터가 바뀔 때마다 증가하는 버전 번호를 관리합니다. 클라이언트는 마지막으로 받은 버전을 기억했다가 다음 요청에 붙여 보냅니다. 서버는 그 버전 이후에 바뀐 항목만 돌려줍니다.</p>
+<pre><code>GET /api/live            → { v: 1042, full: true, items: [...전체...] }
+GET /api/live?since=1042 → { v: 1045, items: [ 바뀐 3개 ] }
+GET /api/live?since=1045 → { v: 1045, items: [] }   // 변경 없음</code></pre>
+
+<h2>서버 쪽 구현</h2>
+<ul>
+<li><b>버전은 시계가 아니라 증가 번호로</b>: 시간값을 쓰면 서버 간 시계 차이나 같은 밀리초에 두 번 바뀌는 경우 변경을 놓칩니다. 항목이 바뀔 때 전역 번호를 1 올리고 그 항목에 기록합니다.</li>
+<li><b>삭제도 변경으로</b>: 목록에서 빠진 항목은 "삭제됨" 표시와 함께 변경분에 넣어야 클라이언트가 지울 수 있습니다.</li>
+<li><b>너무 오래된 버전이면 전체 재동기화</b>: 클라이언트가 보낸 버전이 서버가 기억하는 범위보다 오래됐거나 서버가 재시작돼서 번호가 초기화됐다면 <code>full: true</code>로 전체를 보냅니다. 이 규칙이 있어야 어떤 상황에서도 화면이 틀어지지 않습니다.</li>
+<li><b>변경분은 메모리에 짧게</b>: 최근 몇 분 치 변경 기록만 메모리에 두면 충분합니다. 그보다 오래된 요청은 전체 재동기화로 처리합니다.</li>
+</ul>
+<pre><code>function liveResponse(since?: number) {
+  if (since == null || since &lt; oldestKeptVersion || since &gt; currentVersion)
+    return { v: currentVersion, full: true, items: allItems() };
+  return { v: currentVersion, items: changesAfter(since) };
+}</code></pre>
+
+<h2>클라이언트 쪽 구현</h2>
+<ul>
+<li><code>full</code>이면 목록을 통째로 교체하고, 아니면 받은 항목만 기존 목록에 덮어씁니다.</li>
+<li>응답의 <code>v</code>를 저장해 두고 다음 요청에 <code>since</code>로 보냅니다.</li>
+<li>탭이 백그라운드로 가면 폴링 간격을 늘리거나 멈춥니다. 브라우저의 <code>visibilitychange</code> 이벤트로 감지할 수 있습니다. 다시 돌아오면 즉시 한 번 요청합니다.</li>
+</ul>
+
+<h2>압축과 캐시 헤더도 같이</h2>
+<p>델타 응답은 이미 작지만 전체 재동기화 응답은 여전히 큽니다. 서버나 프록시에서 gzip이나 brotli 압축이 켜져 있는지 확인하세요. 목록 JSON은 반복되는 키가 많아서 압축률이 매우 높습니다. 또 사용자별로 다르지 않은 응답이라면 CDN이 몇 초 동안 캐시하게 해서 같은 버전 요청이 서버까지 오지 않게 할 수 있습니다.</p>
+
+<h2>웹소켓이 낫지 않나</h2>
+<p>변경을 즉시 밀어줘야 하는 호가창이나 체결 화면이라면 웹소켓이 맞습니다. 하지만 몇 초 지연이 괜찮은 목록 화면이라면 델타 폴링이 운영하기 훨씬 쉽습니다. 연결 유지, 재접속, 프록시 타임아웃을 신경 쓸 필요가 없고, 일반 HTTP라서 캐시와 모니터링 도구를 그대로 쓸 수 있습니다. 둘 다 "마지막으로 받은 버전 이후 변경분"이라는 같은 개념을 쓰기 때문에, 나중에 웹소켓으로 옮기더라도 서버 쪽 버전 관리 코드는 그대로 재사용됩니다.</p>
+
+<h2>효과</h2>
+<p>변경이 없는 요청은 버전 번호와 빈 배열만 가는 수십 바이트 응답이 되고, 변경이 있어도 바뀐 항목 몇 개뿐입니다. 서버 부하, 전송량, 클라이언트 렌더링 비용이 함께 줄어들고, 화면 반응은 오히려 빨라집니다.</p>
+</article>
+</main>
+<footer><div class="wrap">© 2026 베일드 솔루션. 거래 플랫폼과 웹 서비스를 직접 만들고 운영하며 정리한 기록입니다.</div></footer>
+</body>
+</html>
