@@ -5,7 +5,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.8 Pretendard,-app
 a{color:var(--accent)}.wrap{max-width:760px;margin:0 auto;padding:0 16px}
 header.site{border-bottom:1px solid var(--line)}header.site .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
 header.site a.brand{color:var(--fg);text-decoration:none;font-weight:700;font-size:17px}header.site nav a{color:var(--muted);text-decoration:none;font-size:15px;margin-left:18px}
-main{padding:40px 0 56px}h1{font-size:30px;line-height:1.35;margin:0 0 12px;letter-spacing:-.01em}h2{font-size:22px;margin:44px 0 12px;line-height:1.4}h3{font-size:18px;margin:28px 0 8px}
+main.wrap{padding:48px 16px 64px}h1{font-size:30px;line-height:1.35;margin:0 0 12px;letter-spacing:-.01em}h2{font-size:22px;margin:44px 0 12px;line-height:1.4}h3{font-size:18px;margin:28px 0 8px}
 .lead{color:var(--muted);font-size:17px;margin:0 0 8px}.meta{color:var(--muted);font-size:14px;margin-bottom:32px}
 pre{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;font-size:14px;line-height:1.6}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em}p code,li code{background:var(--code-bg);padding:1px 5px;border-radius:4px}
@@ -14,4 +14,4 @@ ul,ol{padding-left:22px}li{margin:4px 0}.note{border-left:3px solid var(--accent
 .cards{display:grid;gap:14px;margin-top:24px}.card{display:block;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;text-decoration:none;color:var(--fg)}
 .card:hover{border-color:var(--accent)}.card b{display:block;font-size:18px;line-height:1.45;margin-bottom:6px}.card span{color:var(--muted);font-size:15px}
 footer{border-top:1px solid var(--line);color:var(--muted);font-size:14px;padding:24px 0 40px}
-@media (max-width:560px){body{font-size:16px}h1{font-size:25px}h2{font-size:20px}header.site nav a{margin-left:12px}}
+@media (max-width:560px){main.wrap{padding:32px 16px 48px}body{font-size:16px}h1{font-size:25px}h2{font-size:20px}header.site nav a{margin-left:12px}}
